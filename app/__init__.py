@@ -21,4 +21,18 @@ def create_app() -> Flask:
     from .routes import register_blueprints
     register_blueprints(app, package="app.routes", url_prefix="/api")
 
+    # Add root endpoint to list all available endpoints
+    @app.route('/')
+    def list_endpoints():
+        from flask import jsonify
+        endpoints = []
+        for rule in app.url_map.iter_rules():
+            if rule.endpoint != 'static':
+                methods = list(rule.methods - {'HEAD', 'OPTIONS'}) if rule.methods else []
+                endpoints.append({
+                    "endpoint": rule.rule,
+                    "methods": methods
+                })
+        return jsonify(endpoints)
+
     return app

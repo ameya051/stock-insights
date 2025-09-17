@@ -147,4 +147,3 @@ alembic upgrade head
 - Procfile starts Gunicorn: `web: gunicorn -w 1 -k gthread --threads 2 --max-requests 200 --max-requests-jitter 50 -t 60 -b 0.0.0.0:${PORT:-5000} run:app`
 - Set env vars in Railway: `DATABASE_URL`, `FMP_API_KEY`, and `GOOGLE_API_KEY` (or `GEMINI_API_KEY`).
 - Trial plan friendly: 1 worker, 2 threads.
-```
