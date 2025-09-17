@@ -1,20 +1,23 @@
 import os
 from datetime import date
-from decimal import Decimal
 import requests
-from flask import Blueprint, jsonify
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from app.db import SessionLocal
-from app.models import EodPrice
+from flask import Blueprint, jsonify, request
 
 fmp_bp = Blueprint("fmp", __name__)
 
 
 @fmp_bp.get("/fmp/historical-eod")
 def historical_eod():
-    """Proxy endpoint to fetch historical EOD data for BTCUSD from FMP.
-    Requires FMP_API_KEY in environment.
+    """Fetch historical EOD data from FMP for the given date window.
+
+    Request JSON body:
+    {
+      "from": "YYYY-MM-DD",
+      "to": "YYYY-MM-DD",
+      "symbol": "BTCUSD"    # optional, defaults to BTCUSD
+    }
+
+    Returns the upstream list payload as-is in data.
     """
     api_key = os.getenv("FMP_API_KEY")
     if not api_key:
@@ -28,15 +31,51 @@ def historical_eod():
             400,
         )
 
-    # Fetch only today's EOD (API returns an array with one object)
-    today = date.today()
-    base_url = (
-        "https://financialmodelingprep.com/stable/historical-price-eod/full"
-        f"?symbol=BTCUSD&from={today:%Y-%m-%d}&to={today:%Y-%m-%d}&apikey=" + api_key
-    )
+    body = request.get_json(silent=True) or {}
+    from_str = body.get("from")
+    to_str = body.get("to")
+    symbol = (body.get("symbol") or "BTCUSD").strip() or "BTCUSD"
+
+    if not isinstance(from_str, str) or not isinstance(to_str, str):
+        return (
+            jsonify({
+                "error": "invalid_request",
+                "message": "Body must include 'from' and 'to' as ISO YYYY-MM-DD strings",
+            }),
+            400,
+        )
 
     try:
-        resp = requests.get(base_url, timeout=20)
+        from_dt = date.fromisoformat(from_str)
+        to_dt = date.fromisoformat(to_str)
+    except ValueError:
+        return (
+            jsonify({
+                "error": "invalid_date",
+                "message": "Dates must be ISO YYYY-MM-DD",
+            }),
+            400,
+        )
+
+    if from_dt > to_dt:
+        return (
+            jsonify({
+                "error": "invalid_range",
+                "message": "'from' date cannot be after 'to' date",
+            }),
+            400,
+        )
+
+    base_url = "https://financialmodelingprep.com/stable/historical-price-eod/full"
+    params = {
+        "symbol": symbol,
+        "from": from_dt.isoformat(),
+        "to": to_dt.isoformat(),
+        "apikey": api_key,
+    }
+
+    try:
+        resp = requests.get(base_url, params=params, timeout=20)
         resp.raise_for_status()
     except requests.HTTPError as e:
         status = e.response.status_code if e.response is not None else 502
@@ -55,100 +94,23 @@ def historical_eod():
     except ValueError:
         return jsonify({"error": "invalid_upstream_json"}), 502
 
-    # Validate upstream payload (expect an array with one object)
-    if not isinstance(payload, list) or not payload:
+    # Validate upstream payload (expect a list)
+    if not isinstance(payload, list):
         return (
             jsonify(
                 {
                     "error": "invalid_upstream_payload",
-                    "message": "Expected a non-empty list",
+                    "message": "Expected a list",
                 }
             ),
             502,
         )
 
-    r = payload[0]
-    ds = r.get("date")
-    if not isinstance(ds, str):
-        return (
-            jsonify(
-                {"error": "invalid_upstream_date", "message": "Missing or invalid date"}
-            ),
-            502,
-        )
-
-    try:
-        trade_dt = date.fromisoformat(ds)
-    except ValueError:
-        return (
-            jsonify(
-                {
-                    "error": "invalid_upstream_date",
-                    "message": "Date must be ISO YYYY-MM-DD",
-                }
-            ),
-            502,
-        )
-
-    symbol = r.get("symbol") or "BTCUSD"
-
-    with SessionLocal() as session:
-        # Skip insert if a row already exists for the same symbol+date
-        exists = session.execute(
-            select(EodPrice.id).where(
-                EodPrice.trade_date == trade_dt,
-            )
-        ).first()
-        if exists:
-            return (
-                jsonify(
-                    {
-                        "status": "ok",
-                        "inserted": 0,
-                        "skipped": 1,
-                        "reason": "already_exists",
-                        "date": trade_dt.isoformat(),
-                        "data": [r],
-                    }
-                ),
-                409,
-            )
-
-        row = EodPrice(
-            symbol=symbol,
-            trade_date=trade_dt,
-            open=Decimal(str(r.get("open"))) if r.get("open") is not None else None,
-            high=Decimal(str(r.get("high"))) if r.get("high") is not None else None,
-            low=Decimal(str(r.get("low"))) if r.get("low") is not None else None,
-            close=Decimal(str(r.get("close"))) if r.get("close") is not None else None,
-            vwap=Decimal(str(r.get("vwap"))) if r.get("vwap") is not None else None,
-            volume=r.get("volume"),
-            change_abs=(
-                Decimal(str(r.get("change"))) if r.get("change") is not None else None
-            ),
-            change_percent=(
-                Decimal(str(r.get("changePercent")))
-                if r.get("changePercent") is not None
-                else None
-            ),
-        )
-        try:
-            session.add(row)
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            return (
-                jsonify(
-                    {
-                        "status": "ok",
-                        "inserted": 0,
-                        "skipped": 1,
-                        "reason": "already_exists",
-                        "date": trade_dt.isoformat(),
-                        "data": [r],
-                    }
-                ),
-                409,
-            )
-
-    return jsonify({"status": "ok", "inserted": 1, "data": [r]}), 201
+    return jsonify({
+        "status": "ok",
+        "symbol": symbol,
+        "from": from_dt.isoformat(),
+        "to": to_dt.isoformat(),
+        "count": len(payload),
+        "data": payload,
+    }), 200

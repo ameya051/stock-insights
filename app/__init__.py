@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 from dotenv import load_dotenv
 
 
@@ -7,24 +8,17 @@ def create_app() -> Flask:
     # Load environment variables from a .env file if present
     load_dotenv()
     app = Flask(__name__)
+    # Enable CORS for API routes; adjust origins via CORS_ORIGINS env if needed
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "*"}},
+        supports_credentials=True,
+        expose_headers=["Content-Type"],
+        max_age=600,
+    )
 
-    # Register blueprints
-    from .routes.ping import ping_bp
-    app.register_blueprint(ping_bp, url_prefix='/api')
-
-    # FMP data endpoints
-    try:
-        from .routes.fetch_data import fmp_bp
-        app.register_blueprint(fmp_bp, url_prefix='/api')
-    except Exception:
-        # If route import fails during certain tooling, skip to avoid crashing app creation
-        pass
-
-    # Recommendations endpoints
-    try:
-        from .routes.recommendations import recs_bp
-        app.register_blueprint(recs_bp, url_prefix='/api')
-    except Exception:
-        pass
+    # Register all blueprints found under app.routes automatically
+    from .routes import register_blueprints
+    register_blueprints(app, package="app.routes", url_prefix="/api")
 
     return app
