@@ -20,4 +20,11 @@ def create_app() -> Flask:
         # If route import fails during certain tooling, skip to avoid crashing app creation
         pass
 
+    # Recommendations endpoints
+    try:
+        from .routes.recommendations import recs_bp
+        app.register_blueprint(recs_bp, url_prefix='/api')
+    except Exception:
+        pass
+
     return app

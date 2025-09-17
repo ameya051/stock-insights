@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 import requests
 from flask import Blueprint, jsonify
@@ -32,8 +32,7 @@ def historical_eod():
     today = date.today()
     base_url = (
         "https://financialmodelingprep.com/stable/historical-price-eod/full"
-        f"?symbol=BTCUSD&from={today:%Y-%m-%d}&to={today:%Y-%m-%d}&apikey="
-        + api_key
+        f"?symbol=BTCUSD&from={today:%Y-%m-%d}&to={today:%Y-%m-%d}&apikey=" + api_key
     )
 
     try:
@@ -97,7 +96,6 @@ def historical_eod():
         # Skip insert if a row already exists for the same symbol+date
         exists = session.execute(
             select(EodPrice.id).where(
-                EodPrice.symbol == symbol,
                 EodPrice.trade_date == trade_dt,
             )
         ).first()

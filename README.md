@@ -19,6 +19,30 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Daily job: fetch → analyze → recommend
+
+This repo includes a small daily pipeline that:
+- Fetches today's BTCUSD EOD from FMP
+- Saves it to Postgres (dedup by date)
+- Loads the last 7 days
+- Runs a simple momentum heuristic (stand-in for an LLM)
+- Saves a recommendation into `daily_recommendations`
+
+Prereqs:
+- `DATABASE_URL` set to your Postgres URL (psycopg v3 driver is handled automatically)
+- `FMP_API_KEY` set in your environment or `.env`
+
+Run it manually:
+
+```bash
+source .venv/bin/activate
+python scripts/daily_eod_analysis.py
+```
+
+Optional environment variables:
+- `SYMBOL` (default: BTCUSD)
+- `MODEL_NAME` (default: simple-momentum-v1)
+
 ## Run
 
 ```bash
