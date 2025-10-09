@@ -1,1 +1,1 @@
-web: gunicorn -w 1 -k gthread --threads 2 --max-requests 200 --max-requests-jitter 50 -t 60 -b 0.0.0.0:${PORT:-5000} run:app
+web: gunicorn -w 1 -k gthread --threads 2 --max-requests 200 --timeout 200 --max-requests-jitter 50 -t 60 -b 0.0.0.0:${PORT:-5000} run:app
